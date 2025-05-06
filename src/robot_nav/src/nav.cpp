@@ -22,18 +22,18 @@ using namespace std::placeholders;
 namespace robot_nav {
 
 // Define the VFFVectors struct
-struct VFFVectors {
-  std::vector<float> wander;
-  std::vector<float> repulsive;
-  std::vector<float> result;
-};
+// struct VFFVectors {
+//   std::vector<float> wander;
+//   std::vector<float> repulsive;
+//   std::vector<float> result;
+// };
 
-Define the VFFColor enum
-enum VFFColor {
-  RED,
-  GREEN,
-  BLUE
-};
+// Define the VFFColor enum
+// enum VFFColor {
+//   RED,
+//   GREEN,
+//   BLUE
+// };
 
 WanderNode::WanderNode()
     : Node("nav_wander")

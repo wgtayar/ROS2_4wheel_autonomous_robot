@@ -10,10 +10,10 @@
 #include <algorithm>
 #include <cmath>
 
-#include "geometry_msgs/msg/twist.hpp"
+// #include "geometry_msgs/msg/twist.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
-#include "visualization_msgs/msg/marker_array.hpp"
-#include "visualization_msgs/msg/marker.hpp"
+// #include "visualization_msgs/msg/marker_array.hpp"
+// #include "visualization_msgs/msg/marker.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -24,11 +24,11 @@ using namespace std::placeholders;
 namespace robot_nav {
 
 // Define the VFFVectors struct
-struct VFFVectors {
-  std::vector<float> attractive;
-  std::vector<float> repulsive;
-  std::vector<float> result;
-};
+// struct VFFVectors {
+//   std::vector<float> attractive;
+//   std::vector<float> repulsive;
+//   std::vector<float> result;
+// };
 
 // Define the VFFColor enum
 // enum VFFColor {
@@ -257,53 +257,53 @@ visualization_msgs::msg::MarkerArray NavigateToGoal::get_debug_vff(const VFFVect
   return marker_array;
 }
 
-// visualization_msgs::msg::Marker NavigateToGoal::make_marker(const std::vector<float> & vector, VFFColor color)
-// {
-//   visualization_msgs::msg::Marker marker;
-//   marker.header.frame_id = "base_footprint";
-//   marker.header.stamp = this->now();
-//   marker.type = visualization_msgs::msg::Marker::ARROW;
-//   marker.action = visualization_msgs::msg::Marker::ADD;
+visualization_msgs::msg::Marker NavigateToGoal::make_marker(const std::vector<float> & vector, VFFColor color)
+{
+  visualization_msgs::msg::Marker marker;
+  marker.header.frame_id = "base_footprint";
+  marker.header.stamp = this->now();
+  marker.type = visualization_msgs::msg::Marker::ARROW;
+  marker.action = visualization_msgs::msg::Marker::ADD;
 
-//   geometry_msgs::msg::Point start;
-//   start.x = 0.0;
-//   start.y = 0.0;
-//   start.z = 0.0;
+  geometry_msgs::msg::Point start;
+  start.x = 0.0;
+  start.y = 0.0;
+  start.z = 0.0;
   
-//   geometry_msgs::msg::Point end;
-//   end.x = vector[0];
-//   end.y = vector[1];
-//   end.z = 0.0;
+  geometry_msgs::msg::Point end;
+  end.x = vector[0];
+  end.y = vector[1];
+  end.z = 0.0;
   
-//   marker.points.push_back(start);
-//   marker.points.push_back(end);
+  marker.points.push_back(start);
+  marker.points.push_back(end);
 
-//   marker.scale.x = 0.05;
-//   marker.scale.y = 0.1;
+  marker.scale.x = 0.05;
+  marker.scale.y = 0.1;
 
-//   switch (color) {
-//     case RED: 
-//       marker.color.r = 1.0; 
-//       marker.color.g = 0.0;
-//       marker.color.b = 0.0;
-//       marker.id = 0; 
-//       break;
-//     case GREEN: 
-//       marker.color.r = 0.0;
-//       marker.color.g = 1.0; 
-//       marker.color.b = 0.0;
-//       marker.id = 1; 
-//       break;
-//     case BLUE: 
-//       marker.color.r = 0.0;
-//       marker.color.g = 0.0;
-//       marker.color.b = 1.0; 
-//       marker.id = 2; 
-//       break;
-//   }
+  switch (color) {
+    case RED: 
+      marker.color.r = 1.0; 
+      marker.color.g = 0.0;
+      marker.color.b = 0.0;
+      marker.id = 0; 
+      break;
+    case GREEN: 
+      marker.color.r = 0.0;
+      marker.color.g = 1.0; 
+      marker.color.b = 0.0;
+      marker.id = 1; 
+      break;
+    case BLUE: 
+      marker.color.r = 0.0;
+      marker.color.g = 0.0;
+      marker.color.b = 1.0; 
+      marker.id = 2; 
+      break;
+  }
 
-//   marker.color.a = 1.0;
-//   return marker;
-// }
+  marker.color.a = 1.0;
+  return marker;
+}
 
 } // namespace robot_nav

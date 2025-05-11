@@ -17,7 +17,7 @@ namespace robot_nav
 
     // Default parameters
     goal_tolerance_ = declare_parameter("goal_tolerance", 0.1);
-    stop_distance_ = declare_parameter("stop_distance", 0.2);
+    stop_distance_ = declare_parameter("stop_distance", 1.0);
     obstacle_distance_ = declare_parameter("obstacle_distance", 1.0);
     influence_distance_ = declare_parameter("obstacle_influence_distance", 1.2);
     max_linear_speed_ = declare_parameter("max_linear_speed", 0.3);
@@ -117,7 +117,7 @@ namespace robot_nav
         double dy = tf.transform.translation.y;
         double dist = std::hypot(dx, dy);
 
-        if (dist <= goal_tolerance_)
+        if (dist <= stop_distance_)
         {
           RCLCPP_INFO(get_logger(), "Reached goal %s", target_frame_.c_str());
           goal_reached_ = true;

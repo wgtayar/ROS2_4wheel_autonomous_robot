@@ -1,78 +1,138 @@
 #include "robot_nav/navigate.h"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <thread>
 #include <chrono>
 
+using namespace std::placeholders;
 using namespace std::chrono_literals;
-using std::placeholders::_1;
-using std::placeholders::_2;
 
 namespace robot_nav
 {
 
   Navigate::Navigate()
-      : Node("navigate_server"), tf_buffer_(this->get_clock()), tf_listener_(std::make_shared<tf2_ros::TransformListener>(tf_buffer_))
+      : Node("navigate_server"),
+        tf_buffer_(this->get_clock()),
+        tf_listener_(std::make_shared<tf2_ros::TransformListener>(tf_buffer_))
   {
-
     world_frame_ = this->declare_parameter("world_frame", std::string("odom"));
+    goal_tolerance_ = this->declare_parameter("goal_tolerance", 1.0);
+    stop_distance_ = this->declare_parameter("stop_distance", 1.0);
+    obstacle_distance_ = this->declare_parameter("obstacle_distance", 1.0);
+    influence_distance_ = this->declare_parameter("obstacle_influence_distance", 1.2);
+    max_linear_speed_ = this->declare_parameter("max_linear_speed", 0.3);
+    max_angular_speed_ = this->declare_parameter("max_angular_speed", 0.5);
 
-    // Default parameters
-    goal_tolerance_ = declare_parameter("goal_tolerance", 0.1);
-    stop_distance_ = declare_parameter("stop_distance", 1.0);
-    obstacle_distance_ = declare_parameter("obstacle_distance", 1.0);
-    influence_distance_ = declare_parameter("obstacle_influence_distance", 1.2);
-    max_linear_speed_ = declare_parameter("max_linear_speed", 0.3);
-    max_angular_speed_ = declare_parameter("max_angular_speed", 0.5);
-
-    // Default state
     wander_ = true;
     has_goal_ = false;
     goal_reached_ = false;
-    last_scan_.reset();
 
-    service_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    service_ = create_service<srv::Navigate>(
+    action_server_ = rclcpp_action::create_server<NavigateAction>(
+        this,
         "navigate",
-        std::bind(&Navigate::handle_navigate, this, _1, _2),
-        rmw_qos_profile_services_default,
-        service_cb_group_);
+        std::bind(&Navigate::handle_goal, this, _1, _2),
+        std::bind(&Navigate::handle_cancel, this, _1),
+        std::bind(&Navigate::handle_accepted, this, _1));
 
     vel_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     vff_debug_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>("vff_debug", 10);
 
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-        "/scan",
-        rclcpp::SensorDataQoS(),
+        "/scan", rclcpp::SensorDataQoS(),
         std::bind(&Navigate::scan_callback, this, _1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
         "/odom", 10,
         std::bind(&Navigate::odom_callback, this, _1));
 
-    timer_ = this->create_wall_timer(50ms, std::bind(&Navigate::control_cycle, this));
+    timer_ = create_wall_timer(50ms, std::bind(&Navigate::control_cycle, this));
   }
 
-  void Navigate::handle_navigate(
-      const std::shared_ptr<srv::Navigate::Request> request,
-      std::shared_ptr<srv::Navigate::Response> response)
+  rclcpp_action::GoalResponse
+  Navigate::handle_goal(const rclcpp_action::GoalUUID &,
+                        std::shared_ptr<const NavigateAction::Goal> goal)
   {
-    wander_ = request->wander;
-    target_frame_ = request->target_frame;
+    RCLCPP_INFO(get_logger(),
+                "Received Navigate goal: wander=%s, target='%s'",
+                goal->wander ? "true" : "false",
+                goal->target_frame.c_str());
+    (void)goal;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
+
+  rclcpp_action::CancelResponse
+  Navigate::handle_cancel(const std::shared_ptr<GoalHandleNavigate> /*goal_handle*/)
+  {
+    RCLCPP_INFO(get_logger(), "Navigate goal canceled");
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
+
+  void Navigate::handle_accepted(const std::shared_ptr<GoalHandleNavigate> goal_handle)
+  {
+    std::thread{[this, goal_handle]()
+                { execute(goal_handle); }}
+        .detach();
+  }
+
+  void Navigate::execute(const std::shared_ptr<GoalHandleNavigate> goal_handle)
+  {
+    auto goal = goal_handle->get_goal();
+    wander_ = goal->wander;
+    target_frame_ = goal->target_frame;
+    has_goal_ = (!wander_ && !target_frame_.empty());
     goal_reached_ = false;
 
-    if (!wander_ && !target_frame_.empty())
+    auto feedback = std::make_shared<NavigateAction::Feedback>();
+    auto result = std::make_shared<NavigateAction::Result>();
+
+    rclcpp::Rate loop_rate(20);
+    while (rclcpp::ok())
     {
-      has_goal_ = true;
-      RCLCPP_INFO(get_logger(), "Navigate command: goal → %s", target_frame_.c_str());
-      response->success = true;
-      response->message = "Goal accepted";
+      if (goal_handle->is_canceling())
+      {
+        goal_handle->canceled(result);
+        return;
+      }
+
+      if (goal_reached_)
+      {
+        RCLCPP_INFO(get_logger(), "Action: detected goal_reached_ --> Succeeding");
+        result->success = true;
+        result->message = "Goal reached via VFF";
+        goal_handle->succeed(result);
+        return;
+      }
+
+      double dist = std::numeric_limits<double>::infinity();
+      if (has_goal_)
+      {
+        try
+        {
+          auto t = tf_buffer_.lookupTransform(
+              "dummy_link",
+              target_frame_,
+              tf2::TimePointZero);
+          double dx = t.transform.translation.x;
+          double dy = t.transform.translation.y;
+          dist = std::hypot(dx, dy);
+        }
+        catch (const tf2::TransformException &ex)
+        {
+          RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(),
+              1000, "TF lookup (action) failed: %s", ex.what());
+        }
+      }
+
+      feedback->distance_to_goal = static_cast<float>(dist);
+      feedback->arrived = false;
+      goal_handle->publish_feedback(feedback);
+
+      loop_rate.sleep();
     }
-    else
-    {
-      has_goal_ = false;
-      RCLCPP_INFO(get_logger(), "Navigate command: wander only");
-      response->success = true;
-      response->message = "Wander mode";
-    }
+
+    result->success = false;
+    result->message = "Aborted";
+    goal_handle->abort(result);
   }
 
   void Navigate::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
